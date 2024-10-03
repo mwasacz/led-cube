@@ -1,28 +1,27 @@
 /*-------------------------------------------------------------------------*/
-/* PFF - Low level disk control module for AVR            (C)ChaN, 2010    */
+/* PFF - Low level disk control module for AVR            (C)ChaN, 2014    */
 /*-------------------------------------------------------------------------*/
 
-#include "pff.h"
 #include "diskio.h"
 
-//BYTE rcv_spi (void)
-//{
-//	SPDR = 0xFF;
-//	loop_until_bit_is_set(SPSR, SPIF);
-//	return SPDR;
-//}
-//
-//#include "suart.h"
-//
-//#define SELECT()	PORTB &= ~_BV(3)	/* CS = L */
-//#define	DESELECT()	PORTB |=  _BV(3)	/* CS = H */
-//#define	MMC_SEL		!(PORTB &  _BV(3))	/* CS status (true:CS == L) */
-//#define	FORWARD(d)	xmit(d)				/* Data forwarding function (Console out in this example) */
-//
-//void init_spi (void);		/* Initialize SPI port (usi.S) */
-//void dly_100us (void);		/* Delay 100 microseconds (usi.S) */
-//void xmit_spi (BYTE d);		/* Send a byte to the MMC (usi.S) */
-//BYTE rcv_spi (void);		/* Send a 0xFF to the MMC and get the received byte (usi.S) */
+/*-------------------------------------------------------------------------*/
+/* Platform dependent macros and functions needed to be modified           */
+/*-------------------------------------------------------------------------*/
+
+//#include <avr/io.h>			/* Device specific include files */
+
+//#define CS_LOW()	PORTB &= ~_BV(3)	/* Set CS low */
+//#define	CS_HIGH()	PORTB |=  _BV(3)	/* Set CS high */
+//#define	IS_CS_LOW	!(PINB & _BV(3))	/* Test if CS is low */
+//#define	FORWARD(d)	xmit(d)				/* Data streaming function (console out) */
+
+//void xmit (char);			/* suart.S: Send a byte via software UART */
+//void dly_100us (void);		/* usi.S: Delay 100 microseconds */
+//void init_spi (void);		/* usi.S: Initialize MMC control ports */
+//void xmit_spi (BYTE d);		/* usi.S: Send a byte to the MMC */
+//BYTE rcv_spi (void);		/* usi.S: Send a 0xFF to the MMC and get the received byte */
+
+#define dly_100us() _delay_us(100)
 
 BYTE usi_transfer(BYTE data)
 {
@@ -78,22 +77,20 @@ BYTE usi_transfer(BYTE data)
 
 
 /* Card type flags (CardType) */
-#define CT_MMC				0x01	/* MMC ver 3 */
-#define CT_SD1				0x02	/* SD ver 1 */
-#define CT_SD2				0x04	/* SD ver 2 */
+#define CT_MMC				0x01	/* MMC version 3 */
+#define CT_SD1				0x02	/* SD version 1 */
+#define CT_SD2				0x04	/* SD version 2+ */
 #define CT_BLOCK			0x08	/* Block addressing */
 
 
-static
-BYTE CardType;
+static BYTE CardType;
 
 
 /*-----------------------------------------------------------------------*/
 /* Send a command packet to MMC                                          */
 /*-----------------------------------------------------------------------*/
 
-static
-BYTE send_cmd (
+static BYTE send_cmd (
 	BYTE cmd,		/* 1st byte (Start + Index) */
 	DWORD arg		/* Argument (32 bits) */
 )
@@ -108,22 +105,22 @@ BYTE send_cmd (
 	}
 
 	/* Select the card */
-	/*DESELECT();
+	/*CS_HIGH();
 	rcv_spi();
-	SELECT();
+	CS_LOW();
 	rcv_spi();*/
 
-	if (MMC_SEL)
+	if (IS_CS_LOW)
 	{
 		xmit_spi(0);
 		xmit_spi(0);
-		DESELECT();
+		CS_HIGH();
 	}
 
 	/* Send a command packet */
 	xmit_spi(cmd);						/* Start + Command index */
 	xmit_spi((BYTE)(arg >> 24));		/* Argument[31..24] */
-	SELECT();
+	CS_LOW();
 	xmit_spi((BYTE)(arg >> 16));		/* Argument[23..16] */
 	xmit_spi((BYTE)(arg >> 8));			/* Argument[15..8] */
 	xmit_spi((BYTE)arg);				/* Argument[7..0] */
@@ -162,19 +159,19 @@ DSTATUS disk_initialize (void)
 	BYTE n, cmd, ty, ocr[4];
 	UINT tmr;
 
-#if _USE_WRITE
-	if (CardType && MMC_SEL) disk_writep(0, 0);	/* Finalize write process if it is in progress */
+#if PF_USE_WRITE
+	if (CardType != 0 && IS_CS_LOW) disk_writep(0, 0);	/* Finalize write process if it is in progress */
 #endif
 	//init_spi();		/* Initialize ports to control MMC */
-	//DESELECT();
+	//CS_HIGH();
 	for (n = 10; n; n--) rcv_spi();	/* 80 dummy clocks with CS=H */
 
 	ty = 0;
-	if (send_cmd(CMD0, 0) == 1) {			/* Enter Idle state */
+	if (send_cmd(CMD0, 0) == 1) {			/* GO_IDLE_STATE */
 		if (send_cmd(CMD8, 0x1AA) == 1) {	/* SDv2 */
 			for (n = 0; n < 4; n++) ocr[n] = rcv_spi();		/* Get trailing return value of R7 resp */
 			if (ocr[2] == 0x01 && ocr[3] == 0xAA) {			/* The card can work at vdd range of 2.7-3.6V */
-				for (tmr = 10000; tmr && send_cmd(ACMD41, 1UL << 30); tmr--) _delay_us(100);	/* Wait for leaving idle state (ACMD41 with HCS bit) */
+				for (tmr = 10000; tmr && send_cmd(ACMD41, 1UL << 30); tmr--) dly_100us();	/* Wait for leaving idle state (ACMD41 with HCS bit) */
 				if (tmr && send_cmd(CMD58, 0) == 0) {		/* Check CCS bit in the OCR */
 					for (n = 0; n < 4; n++) ocr[n] = rcv_spi();
 					ty = (ocr[0] & 0x40) ? CT_SD2 | CT_BLOCK : CT_SD2;	/* SDv2 (HC or SC) */
@@ -186,9 +183,10 @@ DSTATUS disk_initialize (void)
 			} else {
 				ty = CT_MMC; cmd = CMD1;	/* MMCv3 */
 			}
-			for (tmr = 10000; tmr && send_cmd(cmd, 0); tmr--) _delay_us(100);	/* Wait for leaving idle state */
-			if (!tmr || send_cmd(CMD16, 512) != 0)			/* Set R/W block length to 512 */
+			for (tmr = 10000; tmr && send_cmd(cmd, 0); tmr--) dly_100us();	/* Wait for leaving idle state */
+			if (!tmr || send_cmd(CMD16, 512) != 0) {	/* Set R/W block length to 512 */
 				ty = 0;
+			}
 		}
 	}
 	CardType = ty;
@@ -196,7 +194,7 @@ DSTATUS disk_initialize (void)
 	xmit_spi(0);
 	xmit_spi(0);
 
-	DESELECT();
+	CS_HIGH();
 	//rcv_spi();
 
 	return ty ? 0 : STA_NOINIT;
@@ -209,47 +207,49 @@ DSTATUS disk_initialize (void)
 /*-----------------------------------------------------------------------*/
 
 DRESULT disk_readp (
-	BYTE *buff,		/* Pointer to the read buffer (NULL:Read bytes are forwarded to the stream) */
-	DWORD lba,		/* Sector number (LBA) */
-	UINT ofs,		/* Byte offset to read from (0..511) */
-	UINT cnt		/* Number of bytes to read (ofs + cnt mus be <= 512) */
+	BYTE *buff,		/* Pointer to the read buffer (NULL:Forward to the stream) */
+	DWORD sector,	/* Sector number (LBA) */
+	UINT offset,	/* Byte offset to read from (0..511) */
+	UINT count		/* Number of bytes to read (ofs + cnt mus be <= 512) */
 )
 {
 	DRESULT res;
 	BYTE rc;
-	WORD bc;
+	UINT bc;
 
 
-	if (!(CardType & CT_BLOCK)) lba *= 512;		/* Convert to byte address if needed */
+	if (!(CardType & CT_BLOCK)) sector *= 512;	/* Convert to byte address if needed */
 
 	res = RES_ERROR;
-	if (send_cmd(CMD17, lba) == 0) {		/* READ_SINGLE_BLOCK */
+	if (send_cmd(CMD17, sector) == 0) {	/* READ_SINGLE_BLOCK */
 
-		bc = 40000;
-		do {							/* Wait for data packet */
+		bc = 40000;	/* Time counter */
+		do {				/* Wait for data block */
 			rc = rcv_spi();
 		} while (rc == 0xFF && --bc);
 
-		if (rc == 0xFE) {				/* A data packet arrived */
-			bc = /*514*/512 - ofs - cnt;
+		if (rc == 0xFE) {	/* A data block arrived */
 
-			/* Skip leading bytes */
-			if (ofs) {
-				do rcv_spi(); while (--ofs);
+			bc = 512 /*+ 2*/ - offset - count;	/* Number of trailing bytes to skip */
+
+			/* Skip leading bytes in the sector */
+			//while (offset--) rcv_spi();
+			if (offset) {
+				do rcv_spi(); while (--offset); // This version has smaller code size
 			}
 
 			/* Receive a part of the sector */
 			//if (buff) {	/* Store data to the memory */
 				do {
-					*buff++ = rcv_spi();
-				} while (--cnt);
-			//} else {	/* Forward data to the outgoing stream (depends on the project) */
+					*buff++ = rcv_spi(); // We assume buff is not NULL
+				} while (--count);
+			//} else {	/* Forward data to the outgoing stream */
 			//	do {
 			//		FORWARD(rcv_spi());
-			//	} while (--cnt);
+			//	} while (--count);
 			//}
 
-			/* Skip trailing bytes and CRC */
+			/* Skip trailing bytes in the sector and block CRC */
 			if (bc) {
 				do rcv_spi(); while (--bc);
 			}
@@ -261,7 +261,7 @@ DRESULT disk_readp (
 	xmit_spi(0);
 	xmit_spi(0);
 
-	DESELECT();
+	CS_HIGH();
 	//rcv_spi();
 
 	return res;
@@ -273,29 +273,29 @@ DRESULT disk_readp (
 /* Write partial sector                                                  */
 /*-----------------------------------------------------------------------*/
 
-#if _USE_WRITE
+#if PF_USE_WRITE
 DRESULT disk_writep (
 	const BYTE *buff,	/* Pointer to the bytes to be written (NULL:Initiate/Finalize sector write) */
-	DWORD sa			/* Number of bytes to send, Sector number (LBA) or zero */
+	DWORD sc			/* Number of bytes to send, Sector number (LBA) or zero */
 )
 {
 	DRESULT res;
-	WORD bc;
-	static WORD wc;
+	UINT bc;
+	static UINT wc;	/* Sector write counter */
 
 	res = RES_ERROR;
 
 	if (buff) {		/* Send data bytes */
-		bc = (WORD)sa;
+		bc = sc;
 		while (bc && wc) {		/* Send data bytes to the card */
 			xmit_spi(*buff++);
 			wc--; bc--;
 		}
 		res = RES_OK;
 	} else {
-		if (sa) {	/* Initiate sector write process */
-			if (!(CardType & CT_BLOCK)) sa *= 512;	/* Convert to byte address if needed */
-			if (send_cmd(CMD24, sa) == 0) {			/* WRITE_SINGLE_BLOCK */
+		if (sc) {	/* Initiate sector write process */
+			if (!(CardType & CT_BLOCK)) sc *= 512;	/* Convert to byte address if needed */
+			if (send_cmd(CMD24, sc) == 0) {			/* WRITE_SINGLE_BLOCK */
 				xmit_spi(0xFF); xmit_spi(0xFE);		/* Data block header */
 				wc = 512;							/* Set byte counter */
 				res = RES_OK;
@@ -304,10 +304,12 @@ DRESULT disk_writep (
 			bc = wc + 2;
 			while (bc--) xmit_spi(0);	/* Fill left bytes and CRC with zeros */
 			if ((rcv_spi() & 0x1F) == 0x05) {	/* Receive data resp and wait for end of write process in timeout of 500ms */
-				for (bc = 5000; rcv_spi() != 0xFF && bc; bc--) dly_100us();	/* Wait ready */
+				for (bc = 5000; rcv_spi() != 0xFF && bc; bc--) {	/* Wait for ready */
+					dly_100us();
+				}
 				if (bc) res = RES_OK;
 			}
-			DESELECT();
+			CS_HIGH();
 			rcv_spi();
 		}
 	}

@@ -91,8 +91,8 @@ static void maxSend(uint8_t adr, uint8_t data)
 {
 	xmit_spi(adr);
 	xmit_spi(data);
-	SELECT();
-	DESELECT();
+	CS_LOW();
+	CS_HIGH();
 }
 
 /*----------------------------------------------------------------------*

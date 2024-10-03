@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#include "integer.h"
+#include "pff.h"
 
 
 /* Status of Disk Functions */
@@ -32,8 +32,6 @@ typedef enum {
 
 #include <util/delay.h>
 
-//#define xmit_spi(dat) 	SPDR=(dat); loop_until_bit_is_set(SPSR,SPIF)
-
 #define SCK		PB2
 #define MISO	PB0
 #define MOSI	PB1
@@ -42,13 +40,13 @@ typedef enum {
 
 BYTE usi_transfer (BYTE data);
 
-#define xmit_spi(dat) usi_transfer(dat)	//SPDR=(dat); loop_until_bit_is_set(SPSR,SPIF)
-#define rcv_spi()     usi_transfer(0xFF)
+#define xmit_spi(dat)	usi_transfer(dat)
+#define rcv_spi()		usi_transfer(0xFF)
 
 /* Port Controls (Platform dependent) */
-#define SELECT()	PORTB &= ~(1<<CS)		/* MMC CS = L */
-#define	DESELECT()	PORTB |=  (1<<CS)		/* MMC CS = H */
-#define	MMC_SEL		!(PORTB &  (1<<CS))	/* MMC CS status (true:selected) */
+#define CS_LOW()	PORTB &= ~(1<<CS)	/* Set CS low */
+#define	CS_HIGH()	PORTB |=  (1<<CS)	/* Set CS high */
+#define	IS_CS_LOW	!(PORTB &  (1<<CS))	/* Test if CS is low */
 
 /*---------------------------------------*/
 /* Prototypes for disk control functions */
