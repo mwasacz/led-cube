@@ -1,18 +1,3 @@
-/*----------------------------------------------------------------------*
- *	LED CUBE 4x4x4														*
- *	with ATtiny85, MAX7219 and SD Card									*
- *								 										*
- *	by Mikolaj Wasacz													*
- *																		*
- *	Microcontroller: AVR ATtiny85										*
- *	Fuse bits: Low:0xC2 High:0xDD Ext:0xFF								*
- *	Clock: 8 MHz Internal Oscillator									*
- *----------------------------------------------------------------------*/
-
-/*----------------------------------------------------------------------*
- *	INCLUDES															*
- *----------------------------------------------------------------------*/
-
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>
@@ -21,20 +6,24 @@
 #include "PetitFatFs/diskio.h"
 #include "PetitFatFs/pff.h"
 
-/*----------------------------------------------------------------------*
- *	FONT DEFINITION														*
- *----------------------------------------------------------------------*/
+// Fuse bits
+FUSES = {
+	.low = 0xC2,
+	.high = 0xDD,
+	.extended = 0xFF
+};
 
 #define E	10
 #define A	11
 #define L	12
 #define CHAR_NUM	13
 
+// Font definition
 const uint8_t font[CHAR_NUM * 2] PROGMEM = {
-/*	0     1     2     3     4     5     6     7     8     9     E     A     l	*/
+//	0     1     2     3     4     5     6     7     8     9     E     A     l
 	0x9F, 0xF5, 0xB9, 0xD9, 0x2E, 0xDD, 0x5F, 0xB8, 0xDF, 0xAE, 0xDF, 0xAF, 0x1F,
 	0xF0, 0x10, 0x50, 0xF0, 0x70, 0xA0, 0x70, 0xC0, 0xF0, 0xF0, 0x90, 0xF0, 0x10,
-/*	Intensity and time	*/
+//	Intensity and time
 	//0xF0, 0xFA, 0xF0, 0xFA
 };
 
@@ -46,10 +35,6 @@ const uint8_t font[CHAR_NUM * 2] PROGMEM = {
 //#define ON_8	0xF0
 //#define ON_9	0x00
 //#define ON_10	0x7D
-
-/*----------------------------------------------------------------------*
- *	VARIABLES															*
- *----------------------------------------------------------------------*/
 
 #define FILE_ERR	7
 #define TIMING_ERR	8
@@ -68,15 +53,7 @@ volatile uint16_t msCnt;
 // Button click
 volatile uint8_t btnClick;
 
-/*----------------------------------------------------------------------*
- *																		*
- *	FUNCTIONS															*
- *																		*
- *----------------------------------------------------------------------*/
-
-/*----------------------------------------------------------------------*
- *	Turn Watchdog off after reset				 						*
- *----------------------------------------------------------------------*/
+// Turn Watchdog off after reset
 void __attribute__((naked)) __attribute__((section(".init3"))) wdtOff()
 {
 	MCUSR = 0;
@@ -84,9 +61,7 @@ void __attribute__((naked)) __attribute__((section(".init3"))) wdtOff()
 	WDTCR = 0;
 }
 
-/*----------------------------------------------------------------------*
- *	Send command to MAX7219						 						*
- *----------------------------------------------------------------------*/
+// Send command to MAX7219
 static void maxSend(uint8_t adr, uint8_t data)
 {
 	xmit_spi(adr);
@@ -95,41 +70,34 @@ static void maxSend(uint8_t adr, uint8_t data)
 	CS_HIGH();
 }
 
-/*----------------------------------------------------------------------*
- *	Prepare an empty frame						 						*
- *----------------------------------------------------------------------*/
+// Prepare an empty frame
 static void emptyFrame()
 {
 	buffer[8] = BUF_8;//font[28];
 	buffer[9] = BUF_9;//font[29];
 	//buffer[10]= OFF_10;
-	
+
 	for (uint8_t i = 0; i < 8; i++)
 	{
 		buffer[i] = 0;
 	}
-	
+
 	GTCCR = (1<<PSR0);
 	TCNT0 = 0;
 	msCnt = 0;
 }
 
-/*----------------------------------------------------------------------*
- *																		*
- *	MAIN																*
- *																		*
- *----------------------------------------------------------------------*/
-
+// Main function
 int main (void)
 {
 	// Configure ports
 	DDRB   = (1<<CS) | (1<<MOSI) | (1<<SCK);
 	PORTB  = (1<<CS) | (1<<MISO) | (1<<BUTTON);
-	
+
 	// Configure USI
 	USICR  = (1<<USIWM0) | (1<<USICS1) | (1<<USICLK);
 	//USICR = (1<<USIWM0) | (1<<USITC);
-	
+
 	// Disable analog comparator
 	ACSR   = (1<<ACD);
 
@@ -137,7 +105,7 @@ int main (void)
 	PCMSK  = (1<<BUTTON);
 	GIFR   = (1<<PCIF);
 	GIMSK  = (1<<PCIE);
-	
+
 	//TCCR1B = (1<<WGM12) | (1<<CS12) | (1<<CS10);
 
 	// Configure Timer0 to generate an interrupt every millisecond
@@ -145,13 +113,13 @@ int main (void)
 	TCCR0A = (1<<WGM01);
 	TCCR0B = (1<<CS01) | (1<<CS00);
 	TIMSK  = (1<<OCIE0A) | (1<<TOIE1);
-	
+
 	// Give SD Card time to initialize
 	_delay_ms(1);
 
 	// Enable interrupts
 	sei();
-	
+
 	// Initialize MAX7219
 	maxSend(0xF, 0x00);
 	maxSend(0xB, 0x07);
@@ -162,10 +130,9 @@ int main (void)
 	{
 		maxSend(i, 0);
 	}
-	
+
 	maxSend(0xC, 0x01);
-	
-	// VARIABLES
+
 	// File system object
 	FATFS fs;
 
@@ -188,7 +155,7 @@ int main (void)
 
 	// Error
 	uint8_t err;
-	
+
 	// Initialize SD Card
 	// Mount
 	err = pf_mount(&fs);
@@ -222,22 +189,21 @@ int main (void)
 		cnt = 0;
 	}
 
-	// MAIN LOOP
+	// Main loop
 	while (1)
 	{
-		// SEND DATA TO MAX7219
 		// Update milliseconds counter
 		msCnt = (buffer[8] & 0x0F) << 8 | buffer[9];
 
-		// Send data
+		// Send data to MAX7219
 		maxSend(0xA, buffer[8] >> 4);
-				
+
 		for (uint8_t i = 0; i < 8; i++)
 		{
 			maxSend(8 - i, buffer[i]);
 		}
 
-		// CHECK IF A NUMBER SHOULD BE DISPLAYED
+		// Check if a number should be displayed
 		if (cnt)
 		{
 			uint8_t layer = (cnt - 1) % 5;
@@ -287,7 +253,7 @@ int main (void)
 			cnt--;
 		}
 
-		// RESET IF AN ERROR OCCURED
+		// Reset if an error occurred
 		else if (err)
 		{
 			while (msCnt);
@@ -296,13 +262,13 @@ int main (void)
 			btnClick = 0;
 			while (!btnClick);
 
-			// Enable Watchdog
+			// Enable Watchdog and wait for reset
 			cli();
 			WDTCR = (1<<WDE);
 			while (1);
 		}
 
-		// REPEAT ANIMATION IF NECESSARY
+		// Repeat animation if necessary
 		else
 		{
 			uint8_t repeat = buffer[10];
@@ -325,7 +291,7 @@ int main (void)
 					}
 				}
 
-				// Repeat one animation infinetely
+				// Repeat one animation indefinitely
 				else if (fileNum)
 				{
 					// Restore the beginning address
@@ -453,7 +419,7 @@ int main (void)
 							err = pf_read(&buffer, sizeof(buffer), &bytesRead);
 						}
 					}
-				
+
 					if (bytesRead != sizeof(buffer) && !err)
 					{
 						err = FILE_SIZE_ERR;
@@ -468,7 +434,7 @@ int main (void)
 			}
 		}
 
-		// CHECK IF TIMING ERROR OCCURED
+		// Check if timing error occurred
 		if (!msCnt && !err)
 		{
 			err = TIMING_ERR;
@@ -476,10 +442,10 @@ int main (void)
 			emptyFrame();
 		}
 
-		// WAIT BEFORE DISPLAYING THE NEXT FRAME
+		// Wait before displaying the next frame
 		do
 		{
-			// REACT TO BUTTON CLICK
+			// React to button click
 			if (btnClick && !err)
 			{
 				btnClick = 0;
@@ -532,7 +498,7 @@ int main (void)
 
 				r_fptr = 0;
 				buffer[10] = 0;
-				
+
 				if (err)
 				{
 					cnt = 10;
@@ -544,15 +510,7 @@ int main (void)
 	}
 }
 
-/*----------------------------------------------------------------------*
- *																		*
- *	INTERRUPT SERVICE ROUTINES											*
- *																		*
- *----------------------------------------------------------------------*/
-
-/*----------------------------------------------------------------------*
- *	Decrement milliseconds counter				 						*
- *----------------------------------------------------------------------*/
+// Decrement milliseconds counter
 ISR(TIMER0_COMPA_vect)
 {
 	if (msCnt)
@@ -561,9 +519,7 @@ ISR(TIMER0_COMPA_vect)
 	}
 }
 
-/*----------------------------------------------------------------------*
- *	Start Timer1 to debounce button				 						*
- *----------------------------------------------------------------------*/
+// Start Timer1 to debounce button
 ISR(PCINT0_vect)
 {
 	// Disable button interrupt
@@ -575,9 +531,7 @@ ISR(PCINT0_vect)
 	TCCR1 = (1<<CS13) | (1<<CS10);
 }
 
-/*----------------------------------------------------------------------*
- *	React to button press after debounce time	 						*
- *----------------------------------------------------------------------*/
+// React to button press after debounce time
 ISR(TIMER1_OVF_vect)
 {
 	// Stop Timer1
@@ -589,7 +543,7 @@ ISR(TIMER1_OVF_vect)
 
 	// Button status (1 - pressed)
 	static uint8_t btnStatus;
-	
+
 	if (btnStatus)
 	{
 		if (PINB & (1<<BUTTON))
