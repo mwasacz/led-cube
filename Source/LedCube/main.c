@@ -1,3 +1,7 @@
+// This file is part of LED Cube
+// Copyright (C) 2020 Mikolaj Wasacz
+// SPDX-License-Identifier: MIT
+
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/pgmspace.h>

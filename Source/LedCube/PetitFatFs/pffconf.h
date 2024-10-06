@@ -1,3 +1,8 @@
+// This file is part of LED Cube
+// SPDX-License-Identifier: MIT
+
+// This file includes code from Petit FatFs by ChaN, covered by copyright notice given in file pff.c
+
 /*---------------------------------------------------------------------------/
 /  Petit FatFs - Configuration file
 /---------------------------------------------------------------------------*/

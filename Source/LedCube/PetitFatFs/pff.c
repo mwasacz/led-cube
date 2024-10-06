@@ -1,3 +1,9 @@
+// This file is part of LED Cube
+// Copyright (C) 2020 Mikolaj Wasacz
+// SPDX-License-Identifier: MIT
+
+// This file includes code from Petit FatFs by ChaN, covered by the following copyright notice:
+
 /*----------------------------------------------------------------------------/
 /  Petit FatFs - FAT file system module  R0.03a
 /-----------------------------------------------------------------------------/

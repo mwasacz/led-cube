@@ -1,3 +1,9 @@
+// This file is part of LED Cube
+// Copyright (C) 2020 Mikolaj Wasacz
+// SPDX-License-Identifier: MIT
+
+// This file includes code from Petit FatFs by ChaN, covered by copyright notice given in file pff.c
+
 /*-----------------------------------------------------------------------
 /  PFF - Low level disk interface modlue include file    (C)ChaN, 2014
 /-----------------------------------------------------------------------*/
